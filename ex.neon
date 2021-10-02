@@ -1,1 +1,3 @@
-add u8(a u8 b u8) = a + b
+putchar void(val i64)
+
+umain void() = { putchar(3) }

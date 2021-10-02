@@ -1,10 +1,10 @@
-use std::{fmt::{Debug, write}, fs};
+use std::fmt::{Debug, write};
 use crate::{Result, Error};
 
 const TWO_CHAR_OPS: [&'static str; 7] = ["==", ">=", "=>", "<=", "=<", "||", "&&"];
 const WHITESPACE: [char; 3] = [' ', '\n', '\t'];
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct LexValue {
     pub(crate) file: String,
     pub(crate) start: usize,

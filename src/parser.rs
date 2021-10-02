@@ -2,7 +2,21 @@ use std::collections::HashMap;
 
 use crate::{Error, lexer::{LexToken, LexValue, Lexer}};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
+pub(crate) struct Function {
+    pub(crate) name: LexValue,
+    pub(crate) ty: Type,
+    pub(crate) args_names: Vec<LexValue>,
+    pub(crate) body: Option<Expr>
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct FunctionType {
+    pub(crate) ret_type: Type,
+    pub(crate) args: Vec<Type>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Expr {
     Variable(LexValue),
     Declaration(Type, Box<Expr>),
@@ -11,9 +25,10 @@ pub(crate) enum Expr {
     Block(Vec<Expr>),
     /// name then the stuff in ( )
     Call(LexValue, Vec<Expr>),
+    Null,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BinaryOp {
     Add,
     Sub,
@@ -34,10 +49,12 @@ impl From<&str> for BinaryOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Type {
+    I64,
     U8,
-    Function(Box<Type>, Vec<Expr>),
+    Void,
+    Function(Box<FunctionType>),
 }
 
 pub(crate) struct Parser {
@@ -50,6 +67,8 @@ pub(crate) struct Parser {
 pub(crate) enum ParseError {
     LexError(Error),
     CannotParseNumber(LexValue),
+    ThisIsNotAString,
+    NotAValidParameterType,
 }
 
 impl From<Error> for ParseError {
@@ -120,7 +139,7 @@ impl Parser {
         return Ok(Expr::Call(name, exprs))
     }
 
-    fn parse_type(&mut self, i: LexValue) -> Result<Type, ParseError> {
+    fn parse_type(&mut self, i: LexValue) -> Result<(Type, Option<Vec<LexValue>>), ParseError> {
         let peeked = self.lexer.clone().lex()?;
         match peeked {
             LexToken::Punc(p) => {
@@ -128,24 +147,34 @@ impl Parser {
                     "(" => {
                         self.lexer.lex()?;
                         let mut args = vec![];
+                        let mut names = vec![];
                         loop {
                             if let Ok(LexToken::Punc(o)) = self.lexer.clone().lex() {
                                 if o.get().as_str() == ")" {
                                     break;
                                 }
                             }
-                            args.push(self.parse()?); // todo: should we do commas
+                            match self.parse()? {
+                                Expr::Declaration(ty, n) => {
+                                    if let Expr::Variable(n) = *n {
+                                        names.push(n);
+                                    } else { panic!(); }
+                                    args.push(ty);
+                                },
+                                _ => return Err(ParseError::NotAValidParameterType),
+                            };
                         }
                         self.lexer.lex()?;
-                        let ty = Type::Function(Box::new(self.types.get(&i.get()).unwrap().clone()), args);
-                        return Ok(ty);
+                        let fun = FunctionType { ret_type: self.types.get(&i.get()).unwrap().clone(), args };
+                        let ty = Type::Function(Box::new(fun));
+                        return Ok((ty, Some(names)));
                     }
                     _ => {},
                 }
             }
             _ => {},
         }
-        return Ok(self.types.get(&i.get()).unwrap().clone());
+        return Ok((self.types.get(&i.get()).unwrap().clone(), None));
     }
 
     /// oh god please no
@@ -161,7 +190,7 @@ impl Parser {
             LexToken::Id(id) => {
                 if self.types.contains_key(&id.get()) && parse_def {
                     self.lexer.lex()?;
-                    let e = self.parse_type(id)?;
+                    let (e, _) = self.parse_type(id)?;
                     let ret = Expr::Declaration(e, Box::new(Expr::Variable(i)));
                     return Ok(ret);
                 }
@@ -197,13 +226,40 @@ impl Parser {
         return Ok(e);
     }
 
-    pub(crate) fn parse(&mut self) -> ParseResult {
-        let res = self.parse_atom();
-        if let Ok(e) = res {
-            let res = self.maybe_binary(e, 0);
-            return res;
+    pub(crate) fn parse_toplevel(&mut self) -> Result<Function, ParseError> {
+        let name = match self.lexer.lex()? {
+            LexToken::Id(i) => i,
+            _ => return Err(ParseError::ThisIsNotAString),
+        };
+
+        let ret_type = match self.lexer.lex()? {
+            LexToken::Id(i) => i,
+            _ => return Err(ParseError::ThisIsNotAString),
+        };
+
+        let (fn_type, args_names) = self.parse_type(ret_type)?;
+
+        let mut body: Option<Expr>;
+
+        let e = Expr::Null;
+        let e = self.maybe_binary(e, 0)?;
+        if e == Expr::Null {
+            body = None;
+        } else if let Expr::Binary(_, op, rhs) = e {
+            if op != BinaryOp::Assign {
+                panic!();
+            }
+            body = Some(*rhs);
         } else {
-            return res;
+            panic!();
         }
+        let f = Function { name: name, ty: fn_type, args_names: args_names.unwrap(), body };
+        return Ok(f);
+    }
+
+    pub(crate) fn parse(&mut self) -> ParseResult {
+        let res = self.parse_atom()?;
+        let res = self.maybe_binary(res, 0);
+        return res;
     }
 }
