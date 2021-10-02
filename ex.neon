@@ -1,1 +1,7 @@
-add u8(a u8 b u8) = a + b
+putchar void(val i64)
+
+main void() = {
+    putchar(69)
+    putchar(118)
+    putchar(97)
+}
