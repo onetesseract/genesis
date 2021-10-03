@@ -10,6 +10,7 @@ use lexer::Lexer;
 use parser::Parser;
 
 use crate::compiler::Compiler;
+use crate::parser::ParseError;
 
 mod lexer;
 mod parser;
@@ -38,15 +39,17 @@ fn main() {
     FILE_CONTENTS.lock().unwrap().insert(String::from("ex.neon"), file_cont.clone());
     let lexer = Lexer::new("ex.neon".to_string(), file_cont);
     let mut parser = Parser::new(lexer, types);
-    let f = parser.parse_toplevel().unwrap();
-    println!("{:?}", f);
     let context = Context::create();
     let module = context.create_module("ex.neon");
     let fpm = PassManager::create(&module);
     let mut compiler = Compiler::new("ex.neon".to_string(), &context, module, fpm);
-    let f = compiler.compile_fn(f).unwrap();
-    let f = parser.parse_toplevel().unwrap();
-    let f = compiler.compile_fn(f).unwrap();
+    let mut f = parser.parse_toplevel();
+    loop {
+        println!("f: {:?}", f);
+        if (&f).is_err() { break; }
+        compiler.compile_fn(f.unwrap()).unwrap();
+        f = parser.parse_toplevel();
+    }
     println!("{:?}", compiler.dump_module());
     std::fs::write("neon.ll", compiler.dump_module()).unwrap();
     

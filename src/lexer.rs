@@ -78,6 +78,10 @@ impl Lexer {
         }
         while WHITESPACE.contains(&(self.cont.as_bytes()[self.index] as char)) {
             self.index+=1;
+            if self.index >= self.cont.as_bytes().len() {
+                return 
+                Ok(LexToken::EOF);
+            }
         }
         match self.cont.as_bytes()[self.index] as char {
             '*' | '/' | '+' | '-' | '=' | '!' | '<' | '>' => {self.index+=1;
@@ -89,11 +93,11 @@ impl Lexer {
                 }
                 Ok(LexToken::Op(LexValue::new_last_one(self))) 
             },
-            '1'..='9' => {
+            '0'..='9' => {
                 let mut count = 0;
                 loop {
                     let c = self.cont.as_bytes()[self.index] as char;
-                    if !matches!(c, '1'..='9') || self.index >= self.cont.len() {
+                    if !matches!(c, '0'..='9') || self.index >= self.cont.len() {
                         break;
                     }
                     count += 1;

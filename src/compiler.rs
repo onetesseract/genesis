@@ -1,6 +1,6 @@
 use std::{collections::HashMap};
 pub(crate) type Result<T> = std::result::Result<T, String>;
-use inkwell::{self, builder::Builder, context::Context, module::Module, passes::PassManager, types::{AnyType, AnyTypeEnum, BasicType, BasicTypeEnum, VoidType}, values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
+use inkwell::{self, FloatPredicate, IntPredicate, builder::Builder, context::Context, module::Module, passes::PassManager, types::{AnyType, AnyTypeEnum, BasicType, BasicTypeEnum, VoidType}, values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue}};
 use crate::parser::{self, Expr, Function, Type};
 
 macro_rules! gimme {
@@ -129,6 +129,7 @@ impl<'ctx> Compiler<'ctx> {
                     parser::BinaryOp::Add => self.build_add(lhs, rhs),
                     parser::BinaryOp::Sub => self.build_sub(lhs, rhs),
                     parser::BinaryOp::Mul => self.build_mul(lhs, rhs),
+                    parser::BinaryOp::Eq => Ok(Some(self.build_cmp_eq(&lhs, &Some(rhs)).as_basic_value_enum())),
                     /* crate::parser::BinaryOp::Div => self.build_div(lhs, rhs),
                     crate::parser::BinaryOp::Equal => self.build_eq_comp(lhs, rhs),
                     crate::parser::BinaryOp::NEqual => todo!(),
@@ -145,32 +146,27 @@ impl<'ctx> Compiler<'ctx> {
                     None => Err(format!("Cannot find variable {}", v.get())),
                 }
             },
-            /*
-            Expr::If(i) => { // TODO: optimise so bools actually exist
-                let cond = gimme_opt!(gimme!(self.compile(i.cond)), format!("Cannot use {:?} as boolean", i.cond));
-                let comp: IntValue = match cond {
-                    BasicValueEnum::ArrayValue(_) => todo!(),
-                    BasicValueEnum::IntValue(i) => { self.builder.build_int_compare(inkwell::IntPredicate::NE, i, self.context.i8_type().const_zero(), "tmpintcmp")},
-                    BasicValueEnum::FloatValue(_) => todo!(),
-                    BasicValueEnum::PointerValue(_) => todo!(),
-                    BasicValueEnum::StructValue(_) => todo!(),
-                    BasicValueEnum::VectorValue(_) => todo!(),
-                };
-                let parent = gimme_opt!(self.fn_val, String::from("this shouldnt happen"));
+            Expr::If(cond, then, els) => { // TODO: optimise so bools actually exist
+                let cond = self.compile(*cond)?.unwrap(); // format!("Cannot use {:?} as boolean", i.cond));
+                let comp = cond.into_int_value(); //cond.into_int_value();
+                // let cmp = self.build_eq_comp(comp.as_basic_value_enum(), self.context.i8_type().const_int(1, false).as_basic_value_enum())?.unwrap();
+                let parent = self.fn_val.unwrap();
                 let then_bb = self.context.append_basic_block(parent, "then_branch");
                 let else_bb = self.context.append_basic_block(parent, "else_branch");
                 let cont_bb = self.context.append_basic_block(parent, "cont_branch");
-                let branch = self.builder.build_conditional_branch(comp, then_bb, else_bb);
+                let _branch = self.builder.build_conditional_branch(comp, then_bb, else_bb);
 
                 self.builder.position_at_end(then_bb);
-                let then_val = gimme!(self.compile(i.then));
+                let then_val = self.compile(*then)?;
                 self.builder.build_unconditional_branch(cont_bb);
 
                 self.builder.position_at_end(else_bb);
-                let else_val: Option<BasicValueEnum<'ctx>> = if let Some(x) = i.els {
-                    gimme!(self.compile(x))
+                let else_val: Option<BasicValueEnum<'ctx>> = if let Some(x) = *els {
+                    self.compile(x)?
                 } else { None };
                 self.builder.build_unconditional_branch(cont_bb);
+
+                self.builder.position_at_end(cont_bb);
 
                 if let Some(t) = then_val {
                     if let Some(e) = else_val {
@@ -189,7 +185,6 @@ impl<'ctx> Compiler<'ctx> {
 
                 Ok(None)
             },
-            */
             Expr::Number(n) => {Ok(Some(self.context.i64_type().const_int(n as u64, false).as_basic_value_enum()))},
             Expr::Block(b) => {
                 for i in b {
@@ -225,6 +220,42 @@ impl<'ctx> Compiler<'ctx> {
                 Ok(c)
             },
             Expr::Null => panic!(),
+
+            /*
+            Expr::If(cond, then, els) => {
+                let parent = self.fn_val.unwrap();
+                let cond = self.compile(*cond)?.unwrap().into_int_value();
+
+                let then_bb = self.context.append_basic_block(parent, "then");
+                let cont_bb = self.context.append_basic_block(parent, "ifcont");
+                todo!();
+            },
+            */
+        }
+    }
+
+    /// Comparses LHS to RHS. If RHS not present, copmpares LHS with (not?) zero.
+    #[inline]
+    fn build_cmp_eq(&self, lhs: &BasicValueEnum<'ctx>, rhs: &Option<BasicValueEnum<'ctx>>) -> IntValue<'ctx> {
+        match lhs {
+            BasicValueEnum::ArrayValue(_) => todo!(),
+            BasicValueEnum::IntValue(lhs) => {
+                if let Some(rhs) = rhs {
+                    self.builder.build_int_compare(IntPredicate::EQ, *lhs, rhs.into_int_value(), "tmpintcmp")
+                } else {
+                    self.builder.build_int_compare(IntPredicate::NE, *lhs, self.context.i64_type().const_zero(), "tmpintzerocmp")
+                }
+            },
+            BasicValueEnum::FloatValue(lhs) => {
+                if let Some(rhs) = rhs {
+                    self.builder.build_float_compare(FloatPredicate::OEQ, *lhs, rhs.into_float_value(), "tmpfloatcmp")
+                } else {
+                    self.builder.build_float_compare(FloatPredicate::ONE, *lhs, self.context.f64_type().const_zero(), "tmpfloatzerocmp")
+                }
+            },
+            BasicValueEnum::PointerValue(_) => todo!(),
+            BasicValueEnum::StructValue(_) => todo!(),
+            BasicValueEnum::VectorValue(_) => todo!(),
         }
     }
 
@@ -288,6 +319,8 @@ impl<'ctx> Compiler<'ctx> {
         } else {
             self.builder.build_return(None);
         }
+
+        println!("Pre-checks: {}", self.dump_module());
 
         if fn_val.verify(true) {
             self.fpm.run_on(&fn_val);

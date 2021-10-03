@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{Error, lexer::{LexToken, LexValue, Lexer}};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Function {
     pub(crate) name: LexValue,
     pub(crate) ty: Type,
@@ -23,6 +23,7 @@ pub(crate) enum Expr {
     Binary(Box<Expr>, BinaryOp, Box<Expr>),
     Number(f64),
     Block(Vec<Expr>),
+    If(Box<Expr>, Box<Expr>, Box<Option<Expr>>),
     /// name then the stuff in ( )
     Call(LexValue, Vec<Expr>),
     Null,
@@ -33,6 +34,7 @@ pub(crate) enum BinaryOp {
     Add,
     Sub,
     Mul,
+    Eq,
 
     Assign,
 }
@@ -44,6 +46,7 @@ impl From<&str> for BinaryOp {
             "+" => BinaryOp::Add,
             "-" => BinaryOp::Sub,
             "*" => BinaryOp::Mul,
+            "==" => BinaryOp::Eq,
             _ => panic!(),
         }
     }
@@ -69,6 +72,7 @@ pub(crate) enum ParseError {
     CannotParseNumber(LexValue),
     ThisIsNotAString,
     NotAValidParameterType,
+    EOF,
 }
 
 impl From<Error> for ParseError {
@@ -126,6 +130,19 @@ impl Parser {
         }
     }
 
+    fn parse_if(&mut self) -> ParseResult {
+        // self.lexer.lex(); // skip the if
+        let cond = self.parse()?;
+        let then = self.parse()?;
+        let els = if let Ok(LexToken::Id(l)) = self.lexer.clone().lex() {
+            if l.get() == "else" {
+                self.lexer.lex()?;
+                Some(self.parse()?)
+            }  else { None }
+        } else { None };
+        Ok(Expr::If(Box::new(cond), Box::new(then), Box::new(els)))
+    }
+
     fn parse_call(&mut self, name: LexValue) -> ParseResult {
         self.lexer.lex()?; // skip the '('
         let mut exprs = vec![];
@@ -179,6 +196,10 @@ impl Parser {
 
     /// oh god please no
     fn parse_id(&mut self, i: LexValue, parse_def: bool) -> ParseResult {
+        match i.get().as_str() {
+            "if" => return self.parse_if(),
+            _ => {}
+        }
         let peeked = self.lexer.clone().lex()?;
         match peeked {
             LexToken::Punc(p) => {
@@ -229,6 +250,7 @@ impl Parser {
     pub(crate) fn parse_toplevel(&mut self) -> Result<Function, ParseError> {
         let name = match self.lexer.lex()? {
             LexToken::Id(i) => i,
+            LexToken::EOF => return Err(ParseError::EOF),
             _ => return Err(ParseError::ThisIsNotAString),
         };
 

@@ -1,7 +1,13 @@
 putchar void(val i64)
 
+gimme i64() = 178
+
 main void() = {
-    putchar(69)
-    putchar(118)
-    putchar(97)
-}
+    if 0 == 0 {
+        putchar(69)
+        putchar(118)
+        putchar(97)
+    } else {
+        putchar(69)
+    }
+}   
