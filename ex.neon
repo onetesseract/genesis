@@ -2,11 +2,15 @@ putchar void(val i64)
 
 gimme i64() = 178
 
+poggers struct = {
+    u u8
+    i i64
+}
+
 main void() = {
     if 0 == 0 {
+        x i64
         putchar(69)
-        putchar(118)
-        putchar(97)
     } else {
         putchar(69)
     }

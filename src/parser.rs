@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+use Either::{Left, Right};
+use either::Either;
+
 use crate::{Error, lexer::{LexToken, LexValue, Lexer}};
 
 #[derive(Debug, Clone)]
@@ -17,6 +20,12 @@ pub(crate) struct FunctionType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Struct {
+    pub(crate) name: LexValue,
+    pub(crate) vals: HashMap<String, (usize, Type)>
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Expr {
     Variable(LexValue),
     Declaration(Type, Box<Expr>),
@@ -31,6 +40,8 @@ pub(crate) enum Expr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BinaryOp {
+    StructAccess,
+
     Add,
     Sub,
     Mul,
@@ -47,6 +58,7 @@ impl From<&str> for BinaryOp {
             "-" => BinaryOp::Sub,
             "*" => BinaryOp::Mul,
             "==" => BinaryOp::Eq,
+            "." => BinaryOp::StructAccess,
             _ => panic!(),
         }
     }
@@ -58,6 +70,7 @@ pub(crate) enum Type {
     U8,
     Void,
     Function(Box<FunctionType>),
+    Struct,
 }
 
 pub(crate) struct Parser {
@@ -81,10 +94,19 @@ impl From<Error> for ParseError {
     }
 }
 
+impl Expr {
+    pub(crate) fn into_variable(&self) -> LexValue {
+        if let Expr::Variable(v) = self {
+            v.clone()
+        } else { panic!() }
+    }
+}
+
 pub(crate) type ParseResult = Result<Expr, ParseError>;
 impl Parser {
     pub(crate) fn new(lexer: Lexer, types: HashMap<String, Type>) -> Parser {
         let mut op_prec: HashMap<String, usize> = HashMap::new();
+        op_prec.insert(".".to_string(), 30);
         op_prec.insert("*".to_string(), 20);
         op_prec.insert("/".to_string(), 20);
         op_prec.insert("%".to_string(), 20);
@@ -247,12 +269,61 @@ impl Parser {
         return Ok(e);
     }
 
-    pub(crate) fn parse_toplevel(&mut self) -> Result<Function, ParseError> {
+    pub(crate) fn parse_struct(&mut self) -> Result<Struct, ParseError> {
+        match self.parse()? {
+            Expr::Binary(name, BinaryOp::Assign, val) => {
+                let name = match *name {
+                    Expr::Declaration(_, name) => name.into_variable(),
+                    _ => panic!(),
+                };
+                let vals = match *val {
+                    Expr::Declaration(t, v) => {
+                        let mut h = HashMap::new();
+                        h.insert(v.into_variable().get(), (0, t));
+                        h
+                    },
+                    Expr::Block(b) => {
+                        let mut h = HashMap::new();
+                        let mut count = 0;
+                        for i in b {
+                            if let Expr::Declaration(t, name) = i {
+                                h.insert(name.into_variable().get(), (count, t));
+                            } else { panic!() }
+                            count += 1;
+                        }
+                        h
+                    }
+                    _ => panic!(),
+                };
+                return Ok(Struct { name, vals })
+            }
+            x => { println!("aa: {:?}", x); panic!() },
+        }
+    }
+
+    pub(crate) fn parse_toplevel(&mut self) -> Result<Either<Function, Struct>, ParseError> {
+        let mut l = self.lexer.clone();
+        match l.lex() { // stops must_use yeling
+            _ => {}
+        }
+        if let Ok(v) = l.lex() {
+            if matches!(v, LexToken::EOF) { return Err(ParseError::EOF)}
+            println!("l: {:?}", v);
+            if v.get_val().get().as_str() == "struct" {
+                return Ok(Right(self.parse_struct()?));
+            }
+        }
+
         let name = match self.lexer.lex()? {
             LexToken::Id(i) => i,
             LexToken::EOF => return Err(ParseError::EOF),
             _ => return Err(ParseError::ThisIsNotAString),
         };
+
+        if name.get().as_str() == "struct" {
+            panic!();
+            // return Ok(Either::Right(self.parse_struct()?));
+        }
 
         let ret_type = match self.lexer.lex()? {
             LexToken::Id(i) => i,
@@ -261,7 +332,7 @@ impl Parser {
 
         let (fn_type, args_names) = self.parse_type(ret_type)?;
 
-        let mut body: Option<Expr>;
+        let body: Option<Expr>;
 
         let e = Expr::Null;
         let e = self.maybe_binary(e, 0)?;
@@ -276,7 +347,7 @@ impl Parser {
             panic!();
         }
         let f = Function { name: name, ty: fn_type, args_names: args_names.unwrap(), body };
-        return Ok(f);
+        return Ok(Left(f));
     }
 
     pub(crate) fn parse(&mut self) -> ParseResult {

@@ -1,7 +1,7 @@
 use std::{collections::HashMap};
 pub(crate) type Result<T> = std::result::Result<T, String>;
-use inkwell::{self, FloatPredicate, IntPredicate, builder::Builder, context::Context, module::Module, passes::PassManager, types::{AnyType, AnyTypeEnum, BasicType, BasicTypeEnum, VoidType}, values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue}};
-use crate::parser::{self, Expr, Function, Type};
+use inkwell::{self, FloatPredicate, IntPredicate, builder::Builder, context::Context, module::Module, passes::PassManager, types::{BasicType, BasicTypeEnum, StructType}, values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue}};
+use crate::parser::{self, Expr, Function, Struct, Type};
 
 macro_rules! gimme {
     ($x:expr) => {
@@ -29,6 +29,8 @@ pub(crate) struct Compiler<'ctx> {
     variables: HashMap<String, PointerValue<'ctx>>,
     fun: Option<Function>,
     fn_val: Option<FunctionValue<'ctx>>,
+
+    structs: HashMap<String, (Struct, StructType<'ctx>)>
 }
 
 impl<'ctx> Compiler<'ctx> {
@@ -38,7 +40,7 @@ impl<'ctx> Compiler<'ctx> {
 
     pub(crate) fn new(name: String, c: &'ctx Context, module: Module<'ctx>, fpm: PassManager<FunctionValue<'ctx>>) -> Compiler<'ctx> {
         let builder = c.create_builder();
-        let c = Compiler { builder, context: c, module, variables: HashMap::new(), fun: None, fn_val: None, fpm };
+        let c = Compiler { builder, context: c, module, variables: HashMap::new(), fun: None, fn_val: None, fpm, structs: HashMap::new() };
         return c;
     }
 
@@ -117,11 +119,26 @@ impl<'ctx> Compiler<'ctx> {
         Ok(None)
     }
 
+    fn build_struct_access(&mut self, lhs: Expr, rhs: Expr) -> Result<Option<BasicValueEnum<'ctx>>> {
+        let lhs = self.compile(lhs)?.unwrap();
+        match rhs {
+            Expr::Variable(v) => {
+                
+            },
+            Expr::Call(_, _) => todo!(),
+            _ => panic!(),
+        }
+        todo!();
+    }
+
 
 
     fn compile(&mut self, e: Expr) -> Result<Option<BasicValueEnum<'ctx>>> {
         match e {
             Expr::Binary(l, op, r) => {
+                if let parser::BinaryOp::StructAccess = op {
+                    return self.build_struct_access(*l, *r);
+                }
                 let lhs = gimme_opt!(gimme!(self.compile(*l)), String::from("void"));
                 let rhs = gimme_opt!(gimme!(self.compile(*r)), String::from("void"));
                 match op {
@@ -130,6 +147,7 @@ impl<'ctx> Compiler<'ctx> {
                     parser::BinaryOp::Sub => self.build_sub(lhs, rhs),
                     parser::BinaryOp::Mul => self.build_mul(lhs, rhs),
                     parser::BinaryOp::Eq => Ok(Some(self.build_cmp_eq(&lhs, &Some(rhs)).as_basic_value_enum())),
+                    parser::BinaryOp::StructAccess => panic!(),
                     /* crate::parser::BinaryOp::Div => self.build_div(lhs, rhs),
                     crate::parser::BinaryOp::Equal => self.build_eq_comp(lhs, rhs),
                     crate::parser::BinaryOp::NEqual => todo!(),
@@ -266,6 +284,22 @@ impl<'ctx> Compiler<'ctx> {
             Type::Void => None,
             _ => todo!(),
         }
+    }
+
+    pub(crate) fn compile_struct_type(&mut self, s: Struct) -> Result<StructType> {
+        let mut fields: Vec<BasicTypeEnum> = vec![]; //.reserve(s.vals.len());
+        for _ in &s.vals {
+            fields.push(self.context.i8_type().as_basic_type_enum()); // todo: ther has to be a better way than this etc etc 
+        }
+        for (_, (c, t)) in s.vals {
+            fields[c] = match t {
+                Type::I64 => self.context.i64_type().as_basic_type_enum(),
+                Type::U8 => self.context.i8_type().as_basic_type_enum(),
+                _ => todo!(),
+            };
+        }
+        let s = self.context.struct_type(fields.as_slice(), false); // todo: implement packing of structs
+        Ok(s)
     }
 
     pub(crate) fn compile_fn(&mut self, f: Function) -> Result<FunctionValue> {

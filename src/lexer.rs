@@ -84,7 +84,7 @@ impl Lexer {
             }
         }
         match self.cont.as_bytes()[self.index] as char {
-            '*' | '/' | '+' | '-' | '=' | '!' | '<' | '>' => {self.index+=1;
+            '*' | '/' | '+' | '-' | '=' | '!' | '<' | '>' | '.' => {self.index+=1;
                 if !(self.index >= self.cont.as_bytes().len()) {
                     if TWO_CHAR_OPS.contains(&std::str::from_utf8(&self.cont.as_bytes()[self.index-1..self.index+1]).unwrap()) {
                         self.index+=1;

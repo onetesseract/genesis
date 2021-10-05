@@ -8,5 +8,6 @@ edition = "2018"
 
 [dependencies]
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm12-0"] }
+either = "1.6.1"
 neoncode = {path = "../neoncode"}
 proc-macro2 = "=1.0.26"

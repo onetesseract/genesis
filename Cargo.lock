@@ -50,6 +50,7 @@ dependencies = [
 name = "genesis"
 version = "0.1.0"
 dependencies = [
+ "either",
  "inkwell",
  "neoncode",
  "proc-macro2",

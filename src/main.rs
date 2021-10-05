@@ -4,13 +4,11 @@ use std::{lazy::SyncLazy, sync::Mutex};
 use std::collections::HashMap;
 
 use inkwell::context::Context;
-use inkwell::module::Module;
 use inkwell::passes::{PassManager, PassManagerSubType};
 use lexer::Lexer;
 use parser::Parser;
 
 use crate::compiler::Compiler;
-use crate::parser::ParseError;
 
 mod lexer;
 mod parser;
@@ -35,6 +33,7 @@ fn main() {
     types.insert(String::from("u8"), parser::Type::U8);
     types.insert(String::from("void"), parser::Type::Void);
     types.insert(String::from("i64"), parser::Type::I64);
+    types.insert(String::from("struct"), parser::Type::Struct);
     let file_cont = std::fs::read_to_string("ex.neon").unwrap();
     FILE_CONTENTS.lock().unwrap().insert(String::from("ex.neon"), file_cont.clone());
     let lexer = Lexer::new("ex.neon".to_string(), file_cont);
@@ -47,7 +46,10 @@ fn main() {
     loop {
         println!("f: {:?}", f);
         if (&f).is_err() { break; }
-        compiler.compile_fn(f.unwrap()).unwrap();
+        match f.unwrap() {
+            either::Either::Left(f) => println!("Compiled function: {:?}", compiler.compile_fn(f).unwrap()),
+            either::Either::Right(s) => println!("Compiled struct type: {:?}", compiler.compile_struct_type(s).unwrap()),
+        }
         f = parser.parse_toplevel();
     }
     println!("{:?}", compiler.dump_module());
