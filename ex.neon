@@ -1,17 +1,16 @@
 putchar void(val i64)
+exit void(val i64)
 
-gimme i64() = 178
-
-poggers struct = {
-    u u8
-    i i64
+printc_plus void(char i64)  = {
+    if !{char == 65 + 26} {
+        putchar(char)
+        printc_plus(char + 1)
+    }
 }
 
 main void() = {
-    if 0 == 0 {
-        x i64
-        putchar(69)
-    } else {
-        putchar(69)
-    }
-}   
+    x i64
+    x = 65
+    printc_plus(x)
+    exit(0)
+}

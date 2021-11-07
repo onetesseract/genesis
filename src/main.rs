@@ -4,7 +4,7 @@ use std::{lazy::SyncLazy, sync::Mutex};
 use std::collections::HashMap;
 
 use inkwell::context::Context;
-use inkwell::passes::{PassManager, PassManagerSubType};
+use inkwell::passes::PassManager;
 use lexer::Lexer;
 use parser::Parser;
 
@@ -15,8 +15,8 @@ mod parser;
 // mod eval;
 mod compiler;
 
-extern crate neoncode;
 extern crate inkwell;
+extern crate neoncode;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Error {
@@ -26,7 +26,8 @@ pub(crate) struct Error {
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
-static FILE_CONTENTS: SyncLazy<Mutex<HashMap<String, String>>> = SyncLazy::new(|| Mutex::new(HashMap::new()));
+static FILE_CONTENTS: SyncLazy<Mutex<HashMap<String, String>>> =
+    SyncLazy::new(|| Mutex::new(HashMap::new()));
 
 fn main() {
     let mut types = HashMap::new();
@@ -35,7 +36,10 @@ fn main() {
     types.insert(String::from("i64"), parser::Type::I64);
     types.insert(String::from("struct"), parser::Type::Struct);
     let file_cont = std::fs::read_to_string("ex.neon").unwrap();
-    FILE_CONTENTS.lock().unwrap().insert(String::from("ex.neon"), file_cont.clone());
+    FILE_CONTENTS
+        .lock()
+        .unwrap()
+        .insert(String::from("ex.neon"), file_cont.clone());
     let lexer = Lexer::new("ex.neon".to_string(), file_cont);
     let mut parser = Parser::new(lexer, types);
     let context = Context::create();
@@ -45,15 +49,20 @@ fn main() {
     let mut f = parser.parse_toplevel();
     loop {
         println!("f: {:?}", f);
-        if (&f).is_err() { break; }
+        if (&f).is_err() {
+            break;
+        }
         match f.unwrap() {
-            either::Either::Left(f) => println!("Compiled function: {:?}", compiler.compile_fn(f).unwrap()),
-            either::Either::Right(s) => println!("Compiled struct type: {:?}", compiler.compile_struct_type(s).unwrap()),
+            either::Either::Left(f) => {
+                println!("Compiled function: {:?}", compiler.compile_fn(f).unwrap())
+            }
+            either::Either::Right(s) => println!(
+                "Compiled struct type: {:?}",
+                compiler.compile_struct_type(s).unwrap()
+            ),
         }
         f = parser.parse_toplevel();
     }
     println!("{:?}", compiler.dump_module());
     std::fs::write("neon.ll", compiler.dump_module()).unwrap();
-    
 }
-
